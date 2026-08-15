@@ -1,83 +1,54 @@
-trigger:
-  - main
+name: Terraform Azure Infrastructure
 
-pool:
-  vmImage: ubuntu-latest
+on:
+  push:
+    branches:
+      - main
 
-variables:
-  terraformVersion: '1.9.8'
+  pull_request:
+    branches:
+      - main
 
-stages:
+permissions:
+  id-token: write
+  contents: read
 
-- stage: Terraform_Plan
-  displayName: Terraform Plan
+env:
+  ARM_USE_OIDC: true
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
-  jobs:
-  - job: TerraformPlan
-    displayName: Terraform Init Validate Plan
+jobs:
+
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./Parant module
 
     steps:
 
-    - checkout: self
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - task: TerraformInstaller@1
-      displayName: Install Terraform
-      inputs:
-        terraformVersion: $(terraformVersion)
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
-    - task: TerraformCLI@2
-      displayName: Terraform Init
-      inputs:
-        command: init
-        workingDirectory: '$(System.DefaultWorkingDirectory)/Parant module'
+      - name: Terraform Format
+        run: terraform fmt -check -recursive
 
-    - task: TerraformCLI@2
-      displayName: Terraform Validate
-      inputs:
-        command: validate
-        workingDirectory: '$(System.DefaultWorkingDirectory)/Parant module'
+      - name: Terraform Init
+        run: terraform init
 
-    - task: TerraformCLI@2
-      displayName: Terraform Plan
-      inputs:
-        command: plan
-        workingDirectory: '$(System.DefaultWorkingDirectory)/Parant module'
-        environmentServiceNameAzureRM: 'azure-terraform-connection'
+      - name: Terraform Validate
+        run: terraform validate
 
+      - name: Terraform Plan
+        run: terraform plan
 
-- stage: Terraform_Apply
-  displayName: Terraform Apply
-  dependsOn: Terraform_Plan
-  condition: succeeded()
-
-  jobs:
-  - deployment: TerraformApply
-    displayName: Apply Infrastructure
-
-    environment: production
-
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-
-          - checkout: self
-
-          - task: TerraformInstaller@1
-            displayName: Install Terraform
-            inputs:
-              terraformVersion: $(terraformVersion)
-
-          - task: TerraformCLI@2
-            displayName: Terraform Init
-            inputs:
-              command: init
-              workingDirectory: '$(System.DefaultWorkingDirectory)/Parant module'
-
-          - task: TerraformCLI@2
-            displayName: Terraform Apply
-            inputs:
-              command: apply
-              workingDirectory: '$(System.DefaultWorkingDirectory)/Parant module'
-              environmentServiceNameAzureRM: 'azure-terraform-connection'
-              commandOptions: '-auto-approve'
+      - name: Terraform Apply
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve
