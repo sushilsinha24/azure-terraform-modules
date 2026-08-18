@@ -1,0 +1,91 @@
+```yaml
+trigger:
+  - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  terraformVersion: '1.9.8'
+
+stages:
+
+# =========================
+# Terraform Validate & Plan
+# =========================
+- stage: Terraform_Plan
+  displayName: Terraform Plan
+
+  jobs:
+  - job: TerraformPlan
+    displayName: Terraform Init Validate Plan
+
+    steps:
+
+    - checkout: self
+
+    - task: TerraformInstaller@1
+      displayName: Install Terraform
+      inputs:
+        terraformVersion: $(terraformVersion)
+
+    - task: TerraformCLI@2
+      displayName: Terraform Init
+      inputs:
+        command: init
+        workingDirectory: '$(System.DefaultWorkingDirectory)/Parent module'
+
+    - task: TerraformCLI@2
+      displayName: Terraform Validate
+      inputs:
+        command: validate
+        workingDirectory: '$(System.DefaultWorkingDirectory)/Parent module'
+
+    - task: TerraformCLI@2
+      displayName: Terraform Plan
+      inputs:
+        command: plan
+        workingDirectory: '$(System.DefaultWorkingDirectory)/Parent module'
+        environmentServiceNameAzureRM: 'Azure-Service-Connection'
+
+
+# =========================
+# Terraform Apply
+# =========================
+- stage: Terraform_Apply
+  displayName: Terraform Apply
+  dependsOn: Terraform_Plan
+  condition: succeeded()
+
+  jobs:
+  - deployment: TerraformApply
+    displayName: Apply Infrastructure
+    environment: production
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+
+          - checkout: self
+
+          - task: TerraformInstaller@1
+            displayName: Install Terraform
+            inputs:
+              terraformVersion: $(terraformVersion)
+
+          - task: TerraformCLI@2
+            displayName: Terraform Init
+            inputs:
+              command: init
+              workingDirectory: '$(System.DefaultWorkingDirectory)/Parent module'
+
+          - task: TerraformCLI@2
+            displayName: Terraform Apply
+            inputs:
+              command: apply
+              workingDirectory: '$(System.DefaultWorkingDirectory)/Parent module'
+              environmentServiceNameAzureRM: 'Azure-Service-Connection'
+              commandOptions: '-auto-approve'
+```
